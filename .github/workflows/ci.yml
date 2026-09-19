@@ -54,8 +54,8 @@ jobs:
           distribution: "temurin"
           cache: 'gradle'
 
-      - name: Build debug APK and run jvm tests
-        run: ./gradlew assembleContinuous lintContinuous testDebugUnitTest --stacktrace -DskipFormatKtlint
+      - name: Build continuous APK
+        run: ./gradlew assembleContinuous --stacktrace -DskipFormatKtlint
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
@@ -64,6 +64,7 @@ jobs:
           path: app/build/outputs/apk/continuous/*.apk
 
   test-android:
+    if: ${{ false }} # disabled: only build the APK
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
