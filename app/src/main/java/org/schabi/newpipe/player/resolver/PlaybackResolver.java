@@ -201,8 +201,16 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
 
         try {
             final StreamInfoTag tag = StreamInfoTag.of(info);
-            // Prefer DASH over HLS because of an exoPlayer bug that causes the background player to
-            // also fetch the video stream even if it is supposed to just fetch the audio stream.
+            // Prefer HLS on YouTube, because segments of YouTube's live DASH manifests get
+            // rejected with HTTP 403 errors around 30 seconds after the stream info was fetched,
+            // while segments of its live HLS manifests keep working.
+            if (info.getServiceId() == ServiceList.YouTube.getServiceId()
+                    && !info.getHlsUrl().isEmpty()) {
+                return buildLiveMediaSource(dataSource, info.getHlsUrl(), C.CONTENT_TYPE_HLS, tag);
+            }
+            // Otherwise prefer DASH over HLS because of an exoPlayer bug that causes the background
+            // player to also fetch the video stream even if it is supposed to just fetch the audio
+            // stream.
             if (!info.getDashMpdUrl().isEmpty()) {
                 return buildLiveMediaSource(
                         dataSource, info.getDashMpdUrl(), C.CONTENT_TYPE_DASH, tag);
