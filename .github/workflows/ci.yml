@@ -36,6 +36,9 @@ jobs:
     permissions:
       contents: read
 
+    env:
+      DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
+
     steps:
       - uses: actions/checkout@v6
       - uses: gradle/actions/wrapper-validation@v6
@@ -54,8 +57,85 @@ jobs:
           distribution: "temurin"
           cache: 'gradle'
 
+      # The continuous build type is signed with the debug signing config. The key behind it has
+      # to stay the same on every run, otherwise the APK cannot be installed as an update over the
+      # one from an earlier run: Android refuses to install an APK over an already installed one
+      # whose signature differs. Runners start from a clean image, so the key has to be supplied.
+      #
+      # Create it with:
+      #   keytool -genkeypair -keystore debug.keystore \
+      #     -storepass android -keypass android -alias androiddebugkey \
+      #     -keyalg RSA -keysize 2048 -validity 10000 \
+      #     -dname "CN=Android Debug,O=Android,C=US"
+      #   base64 -w0 debug.keystore
+      # and store the output as the DEBUG_KEYSTORE repository secret. The alias and both passwords
+      # are the ones the debug signing config hardcodes, so they cannot be changed.
+      - name: Write the signing keystore from the secret
+        run: |
+          set -euo pipefail
+          if [ -z "$DEBUG_KEYSTORE" ]; then
+            echo "::error::The DEBUG_KEYSTORE secret is not set, so the APK would be signed with \
+            a throwaway key and could not be installed over a build from another run. See the \
+            comment above this step in .github/workflows/ci.yml for how to create it."
+            exit 1
+          fi
+          echo "$DEBUG_KEYSTORE" | base64 -d > "$RUNNER_TEMP/expected.keystore"
+          # Fail here rather than deep inside Gradle if the keystore does not use the alias and
+          # password the debug signing config expects.
+          keytool -list -keystore "$RUNNER_TEMP/expected.keystore" \
+            -storepass android -alias AndroidDebugKey
+          # The Android Gradle Plugin does not look in ~/.android but under $XDG_CONFIG_HOME, so
+          # on a runner it reads ~/.config/.android/debug.keystore. That fallback is undocumented
+          # and may change, hence both locations, plus the check after the build.
+          for dir in "$HOME/.android" "${XDG_CONFIG_HOME:-$HOME/.config}/.android"; do
+            mkdir -p "$dir"
+            cp "$RUNNER_TEMP/expected.keystore" "$dir/debug.keystore"
+          done
+
+      # The version name suffix only makes the build identifiable in the about screen and in error
+      # reports; it is deliberately not a versionCode bump, since reinstalling over the same
+      # versionCode works fine while a bumped one would block installing a local build afterwards.
       - name: Build continuous APK
-        run: ./gradlew assembleContinuous --stacktrace -DskipFormatKtlint
+        run: >-
+          ./gradlew assembleContinuous --stacktrace -DskipFormatKtlint
+          "-DversionNameSuffix=-ci.${{ github.run_number }}"
+
+      # Prints the keystore each variant resolves to. When the check below fails, the Store line
+      # for the continuous variant says where the keystore should have been written instead.
+      - name: Report the signing configuration
+        run: ./gradlew :app:signingReport
+
+      # Nothing makes the plugin use the keystore written above: when it does not find one where
+      # it looks, it generates a throwaway key and the build still succeeds. Comparing the
+      # certificate the APK ended up with against the expected one turns that into a red build
+      # rather than an APK that silently cannot be installed as an update. keytool can read the
+      # certificate because minSdk is below 24, which makes AGP add a v1 signature.
+      - name: Check the APK was signed with the expected key
+        run: |
+          set -euo pipefail
+          # grep -m1 rather than `| head -1`, which can leave grep killed by SIGPIPE and, under
+          # pipefail, fail the step over an APK that is in fact signed correctly.
+          sha256() { grep -m1 -iE 'SHA-?256[^:]*:' | sed 's/^[^:]*: *//' | tr -d '[:space:]'; }
+          expected="$(keytool -list -keystore "$RUNNER_TEMP/expected.keystore" \
+            -storepass android -alias AndroidDebugKey | sha256)"
+          echo "DEBUG_KEYSTORE secret holds $expected" >> "$GITHUB_STEP_SUMMARY"
+          # An unmatched glob would otherwise run the loop once over the pattern itself.
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/continuous/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::The build produced no APK, so its signature could not be checked."
+            exit 1
+          fi
+          for apk in "${apks[@]}"; do
+            actual="$(keytool -printcert -jarfile "$apk" | sha256)"
+            echo "$(basename "$apk") signed with $actual" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$(basename "$apk") is signed with $actual instead of the expected \
+              $expected, so the Android Gradle Plugin did not pick up the keystore this workflow \
+              wrote. See the Store path in the signing report step and write the keystore there."
+              exit 1
+            fi
+          done
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
