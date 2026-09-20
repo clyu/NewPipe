@@ -105,6 +105,23 @@ jobs:
       - name: Report the signing configuration
         run: ./gradlew :app:signingReport
 
+      # Name both the APK and the artifact after the version, reading it the way
+      # build-release-apk.yml does, so that a downloaded build says which run it came from instead
+      # of being another app.zip holding another app-continuous.apk.
+      - name: Rename the APK
+        id: apk
+        run: |
+          set -euo pipefail
+          dir=app/build/outputs/apk/continuous
+          version="$(jq -r '.elements[0].versionName' "$dir/output-metadata.json")"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "::error::No version name in $dir/output-metadata.json, cannot name the APK."
+            exit 1
+          fi
+          # assume there is only one APK in that folder
+          mv "$dir"/*.apk "$dir/NewPipe-$version.apk"
+          echo "artifact=NewPipe-$version" >> "$GITHUB_OUTPUT"
+
       # Nothing makes the plugin use the keystore written above: when it does not find one where
       # it looks, it generates a throwaway key and the build still succeeds. Comparing the
       # certificate the APK ended up with against the expected one turns that into a red build
@@ -140,7 +157,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v7
         with:
-          name: app
+          name: ${{ steps.apk.outputs.artifact }}
           path: app/build/outputs/apk/continuous/*.apk
 
   test-android:
