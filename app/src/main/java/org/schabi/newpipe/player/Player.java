@@ -337,6 +337,35 @@ public final class Player implements PlaybackListener, Listener {
             }
         };
     }
+
+    /**
+     * Limits the video tracks that ExoPlayer chooses by itself, i.e. the ones of adaptive streams
+     * such as livestreams, to the resolution preferred by the user. The other streams contain a
+     * single video track, already chosen according to the same preference by the
+     * {@link VideoPlaybackResolver}, which ExoPlayer plays even if it exceeds this limit.
+     */
+    private void updateMaxVideoSize() {
+        final String resolution = Optional.ofNullable(videoResolver.getPlaybackQuality())
+                .orElseGet(() -> videoPlayerSelected()
+                        ? ListHelper.getDefaultResolution(context)
+                        : ListHelper.getPopupDefaultResolution(context));
+
+        int maxSize = Integer.MAX_VALUE;
+        if (!resolution.equals(context.getString(R.string.best_resolution_key))) {
+            try {
+                final int height = Integer.parseInt(resolution.replaceAll("p\\d*$", ""));
+                // The resolution is the one of the shorter side of the video, so allow the longer
+                // side of a 16:9 video with that resolution, in both orientations. It is rounded
+                // up, e.g. to 854 for 480p.
+                maxSize = (height * 16 + 8) / 9;
+            } catch (final NumberFormatException e) {
+                Log.w(TAG, "Unknown resolution, not limiting the video size: " + resolution);
+            }
+        }
+
+        trackSelector.setParameters(trackSelector.buildUponParameters()
+                .setMaxVideoSize(maxSize, maxSize));
+    }
     //endregion
 
 
@@ -731,6 +760,8 @@ public final class Player implements PlaybackListener, Listener {
         }
 
         if (playQueue != null) {
+            // the player type or the preferred quality might have changed
+            updateMaxVideoSize();
             playQueueManager = new MediaSourceManager(this, playQueue);
         }
     }
