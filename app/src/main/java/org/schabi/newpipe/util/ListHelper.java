@@ -73,6 +73,26 @@ public final class ListHelper {
     private ListHelper() { }
 
     /**
+     * @param context Android app context
+     * @return the default resolution of the main player (e.g. {@code 720p60}), lowered to the
+     * resolution limit of mobile data if needed, or the key of the best resolution
+     */
+    public static String getDefaultResolution(final Context context) {
+        return computeDefaultResolution(context,
+                R.string.default_resolution_key, R.string.default_resolution_value);
+    }
+
+    /**
+     * @param context Android app context
+     * @return the default resolution of the popup player (e.g. {@code 480p}), lowered to the
+     * resolution limit of mobile data if needed, or the key of the best resolution
+     */
+    public static String getPopupDefaultResolution(final Context context) {
+        return computeDefaultResolution(context,
+                R.string.default_popup_resolution_key, R.string.default_popup_resolution_value);
+    }
+
+    /**
      * @param context      Android app context
      * @param videoStreams list of the video streams to check
      * @return index of the video stream with the default index
@@ -80,9 +100,8 @@ public final class ListHelper {
      */
     public static int getDefaultResolutionIndex(final Context context,
                                                 final List<VideoStream> videoStreams) {
-        final String defaultResolution = computeDefaultResolution(context,
-                R.string.default_resolution_key, R.string.default_resolution_value);
-        return getDefaultResolutionWithDefaultFormat(context, defaultResolution, videoStreams);
+        return getDefaultResolutionWithDefaultFormat(context, getDefaultResolution(context),
+                videoStreams);
     }
 
     /**
@@ -106,9 +125,8 @@ public final class ListHelper {
      */
     public static int getPopupDefaultResolutionIndex(final Context context,
                                                      final List<VideoStream> videoStreams) {
-        final String defaultResolution = computeDefaultResolution(context,
-                R.string.default_popup_resolution_key, R.string.default_popup_resolution_value);
-        return getDefaultResolutionWithDefaultFormat(context, defaultResolution, videoStreams);
+        return getDefaultResolutionWithDefaultFormat(context, getPopupDefaultResolution(context),
+                videoStreams);
     }
 
     /**
