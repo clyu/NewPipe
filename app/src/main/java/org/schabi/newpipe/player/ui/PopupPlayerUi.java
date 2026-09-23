@@ -419,6 +419,14 @@ public final class PopupPlayerUi extends VideoPlayerUi {
     public void onPlaying() {
         super.onPlaying();
         changePopupWindowFlags(ONGOING_PLAYBACK_WINDOW_FLAGS);
+
+        // Playback can be resumed while the screen is off (e.g. from a headset or the lock
+        // screen), or while the screen is on but the video was disabled when the screen was
+        // turned off: use the video only if the screen is on
+        final boolean useVideo = player.isScreenOn();
+        if (player.isAudioOnly() == useVideo) {
+            player.useVideoAndSubtitles(useVideo);
+        }
     }
 
     @Override

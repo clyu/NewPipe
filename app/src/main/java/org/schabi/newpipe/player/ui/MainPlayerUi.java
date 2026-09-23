@@ -375,7 +375,10 @@ public final class MainPlayerUi extends VideoPlayerUi implements View.OnLayoutCh
         if (player.isPlaying() || player.isLoading()) {
             switch (getMinimizeOnExitAction(context)) {
                 case MINIMIZE_ON_EXIT_MODE_BACKGROUND:
-                    player.useVideoAndSubtitles(false);
+                    // onPlaying() might have already disabled the video
+                    if (!player.isAudioOnly()) {
+                        player.useVideoAndSubtitles(false);
+                    }
                     break;
                 case MINIMIZE_ON_EXIT_MODE_POPUP:
                     getParentActivity().ifPresent(activity -> {
@@ -415,6 +418,13 @@ public final class MainPlayerUi extends VideoPlayerUi implements View.OnLayoutCh
     public void onPlaying() {
         super.onPlaying();
         checkLandscape();
+
+        // Playback can be resumed while the player is not visible, e.g. from a headset, the lock
+        // screen or the notification (which goes through the media session on Android 13+):
+        // don't fetch and decode the video in that case
+        if (!fragmentIsVisible && !player.isAudioOnly()) {
+            player.useVideoAndSubtitles(false);
+        }
     }
 
     @Override
