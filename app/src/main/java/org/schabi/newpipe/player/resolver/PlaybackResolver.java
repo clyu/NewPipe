@@ -192,31 +192,52 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
 
 
     //region Live media sources
+
+    /**
+     * @param info the {@link StreamInfo stream info} of the stream
+     * @return whether the stream is a livestream for which
+     * {@link #maybeBuildLiveMediaSource(PlayerDataSource, StreamInfo, boolean)} builds an HLS
+     * media source
+     */
+    static boolean isHlsLivestream(final StreamInfo info) {
+        return StreamTypeUtil.isLiveStream(info.getStreamType())
+                && !info.getHlsUrl().isEmpty()
+                // Prefer HLS on YouTube, because segments of YouTube's live DASH manifests get
+                // rejected with HTTP 403 errors around 30 seconds after the stream info was
+                // fetched, while segments of its live HLS manifests keep working.
+                // Otherwise prefer DASH over HLS because of an exoPlayer bug that causes the
+                // background player to also fetch the video stream even if it is supposed to just
+                // fetch the audio stream.
+                && (info.getServiceId() == ServiceList.YouTube.getServiceId()
+                        || info.getDashMpdUrl().isEmpty());
+    }
+
+    /**
+     * @param dataSource the {@link PlayerDataSource} providing the media source factories
+     * @param info       the {@link StreamInfo stream info} of the stream
+     * @param audioOnly  whether only the audio of the stream will be played, in which case only
+     *                   the cheapest variant of HLS livestreams is fetched, since their variants
+     *                   usually contain both audio and video
+     * @return a live media source, or {@code null} if the stream is not a livestream or if no
+     * live media source could be built
+     */
     @Nullable
     static MediaSource maybeBuildLiveMediaSource(final PlayerDataSource dataSource,
-                                                 final StreamInfo info) {
+                                                 final StreamInfo info,
+                                                 final boolean audioOnly) {
         if (!StreamTypeUtil.isLiveStream(info.getStreamType())) {
             return null;
         }
 
         try {
             final StreamInfoTag tag = StreamInfoTag.of(info);
-            // Prefer HLS on YouTube, because segments of YouTube's live DASH manifests get
-            // rejected with HTTP 403 errors around 30 seconds after the stream info was fetched,
-            // while segments of its live HLS manifests keep working.
-            if (info.getServiceId() == ServiceList.YouTube.getServiceId()
-                    && !info.getHlsUrl().isEmpty()) {
-                return buildLiveMediaSource(dataSource, info.getHlsUrl(), C.CONTENT_TYPE_HLS, tag);
+            if (isHlsLivestream(info)) {
+                return buildLiveMediaSource(dataSource, info.getHlsUrl(), C.CONTENT_TYPE_HLS, tag,
+                        audioOnly);
             }
-            // Otherwise prefer DASH over HLS because of an exoPlayer bug that causes the background
-            // player to also fetch the video stream even if it is supposed to just fetch the audio
-            // stream.
             if (!info.getDashMpdUrl().isEmpty()) {
                 return buildLiveMediaSource(
-                        dataSource, info.getDashMpdUrl(), C.CONTENT_TYPE_DASH, tag);
-            }
-            if (!info.getHlsUrl().isEmpty()) {
-                return buildLiveMediaSource(dataSource, info.getHlsUrl(), C.CONTENT_TYPE_HLS, tag);
+                        dataSource, info.getDashMpdUrl(), C.CONTENT_TYPE_DASH, tag, audioOnly);
             }
         } catch (final Exception e) {
             Log.w(TAG, "Error when generating live media source, falling back to standard sources",
@@ -229,7 +250,8 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
     static MediaSource buildLiveMediaSource(final PlayerDataSource dataSource,
                                             final String sourceUrl,
                                             @C.ContentType final int type,
-                                            final MediaItemTag metadata) throws ResolverException {
+                                            final MediaItemTag metadata,
+                                            final boolean audioOnly) throws ResolverException {
         final MediaSource.Factory factory;
         switch (type) {
             case C.CONTENT_TYPE_SS:
@@ -243,7 +265,9 @@ public interface PlaybackResolver extends Resolver<StreamInfo, MediaSource> {
                 }
                 break;
             case C.CONTENT_TYPE_HLS:
-                factory = dataSource.getLiveHlsMediaSourceFactory();
+                factory = audioOnly
+                        ? dataSource.getLiveHlsAudioOnlyMediaSourceFactory()
+                        : dataSource.getLiveHlsMediaSourceFactory();
                 break;
             case C.CONTENT_TYPE_OTHER:
             case C.CONTENT_TYPE_RTSP:

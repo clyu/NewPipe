@@ -65,7 +65,8 @@ public class VideoPlaybackResolver implements PlaybackResolver {
     @Override
     @Nullable
     public MediaSource resolve(@NonNull final StreamInfo info) {
-        final MediaSource liveSource = PlaybackResolver.maybeBuildLiveMediaSource(dataSource, info);
+        final MediaSource liveSource = PlaybackResolver.maybeBuildLiveMediaSource(dataSource, info,
+                false);
         if (liveSource != null) {
             streamSourceType = SourceType.LIVE_STREAM;
             return liveSource;
