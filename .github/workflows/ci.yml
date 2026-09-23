@@ -36,6 +36,9 @@ jobs:
     permissions:
       contents: read
 
+    outputs:
+      artifact: ${{ steps.apk.outputs.artifact }}
+
     env:
       DEBUG_KEYSTORE: ${{ secrets.DEBUG_KEYSTORE }}
 
@@ -159,6 +162,62 @@ jobs:
         with:
           name: ${{ steps.apk.outputs.artifact }}
           path: app/build/outputs/apk/continuous/*.apk
+
+  # Puts the APK on the Releases page as the "Latest Build" pre-release, so that it can be
+  # downloaded without signing in, which workflow artifacts require. Only master publishes: there
+  # is a single Latest Build, and dev here only mirrors upstream.
+  publish-latest:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    needs: build-and-test-jvm
+    runs-on: ubuntu-latest
+
+    # Every run deletes the Latest Build releases other than its own, so two runs at once would
+    # delete each other's and leave none. Queue them instead.
+    concurrency:
+      group: publish-latest
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download the APK
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-and-test-jvm.outputs.artifact }}
+          path: apk
+
+      # The repository has immutable releases enabled: a published release cannot have assets
+      # added or replaced, and once it is deleted its tag name can never be used again. So instead
+      # of refreshing a release under a fixed tag, every build gets a release under a tag of its
+      # own. Given assets, gh creates the release as a draft, uploads them and only then publishes
+      # it, which is the order immutability requires. Without --target the tag would go on the
+      # head of the default branch, which need not be this commit.
+      - name: Publish the Latest Build pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ci-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" apk/*.apk --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease --title "Latest Build" \
+            --notes "Built from $GITHUB_SHA by [run $GITHUB_RUN_NUMBER]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+
+      # Only once the new release is up, so that there is always one to download. Deleting a
+      # release leaves its tag behind, hence --cleanup-tag.
+      - name: Delete the Latest Build releases of earlier runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ci-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          old_tags="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,name,isPrerelease \
+            | jq -r --arg tag "$TAG" \
+              '.[] | select(.name == "Latest Build" and .isPrerelease and .tagName != $tag) | .tagName')"
+          for old in $old_tags; do
+            gh release delete "$old" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY"
+          done
 
   test-android:
     if: ${{ false }} # disabled: only build the APK
