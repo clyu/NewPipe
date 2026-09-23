@@ -78,11 +78,15 @@ public final class ExtractorHelper {
                                                final List<String> contentFilter,
                                                final String sortFilter) {
         checkServiceId(serviceId);
-        return Single.fromCallable(() ->
-                SearchInfo.getInfo(NewPipe.getService(serviceId),
-                        NewPipe.getService(serviceId)
-                                .getSearchQHFactory()
-                                .fromQuery(searchString, contentFilter, sortFilter)));
+        return Single.fromCallable(() -> {
+            final SearchInfo info = SearchInfo.getInfo(NewPipe.getService(serviceId),
+                    NewPipe.getService(serviceId)
+                            .getSearchQHFactory()
+                            .fromQuery(searchString, contentFilter, sortFilter));
+            info.setRelatedItems(
+                    OriginalTitleHelper.restoreOriginalTitles(info.getRelatedItems()));
+            return info;
+        });
     }
 
     public static Single<InfoItemsPage<InfoItem>> getMoreSearchItems(
@@ -92,12 +96,16 @@ public final class ExtractorHelper {
             final String sortFilter,
             final Page page) {
         checkServiceId(serviceId);
-        return Single.fromCallable(() ->
-                SearchInfo.getMoreItems(NewPipe.getService(serviceId),
-                        NewPipe.getService(serviceId)
-                                .getSearchQHFactory()
-                                .fromQuery(searchString, contentFilter, sortFilter), page));
-
+        return Single.fromCallable(() -> {
+            final InfoItemsPage<InfoItem> morePage = SearchInfo.getMoreItems(
+                    NewPipe.getService(serviceId),
+                    NewPipe.getService(serviceId)
+                            .getSearchQHFactory()
+                            .fromQuery(searchString, contentFilter, sortFilter), page);
+            return new InfoItemsPage<>(
+                    OriginalTitleHelper.restoreOriginalTitles(morePage.getItems()),
+                    morePage.getNextPage(), morePage.getErrors());
+        });
     }
 
     public static Single<List<String>> suggestionsFor(final int serviceId, final String query) {
@@ -132,8 +140,13 @@ public final class ExtractorHelper {
         checkServiceId(serviceId);
         return checkCache(forceLoad, serviceId,
                 listLinkHandler.getUrl(), InfoCache.Type.CHANNEL_TAB,
-                Single.fromCallable(() ->
-                        ChannelTabInfo.getInfo(NewPipe.getService(serviceId), listLinkHandler)));
+                Single.fromCallable(() -> {
+                    final ChannelTabInfo info = ChannelTabInfo.getInfo(
+                            NewPipe.getService(serviceId), listLinkHandler);
+                    info.setRelatedItems(
+                            OriginalTitleHelper.restoreOriginalTitles(info.getRelatedItems()));
+                    return info;
+                }));
     }
 
     public static Single<InfoItemsPage<InfoItem>> getMoreChannelTabItems(
@@ -141,9 +154,13 @@ public final class ExtractorHelper {
             final ListLinkHandler listLinkHandler,
             final Page nextPage) {
         checkServiceId(serviceId);
-        return Single.fromCallable(() ->
-                ChannelTabInfo.getMoreItems(NewPipe.getService(serviceId),
-                        listLinkHandler, nextPage));
+        return Single.fromCallable(() -> {
+            final InfoItemsPage<InfoItem> page = ChannelTabInfo.getMoreItems(
+                    NewPipe.getService(serviceId), listLinkHandler, nextPage);
+            return new InfoItemsPage<>(
+                    OriginalTitleHelper.restoreOriginalTitles(page.getItems()),
+                    page.getNextPage(), page.getErrors());
+        });
     }
 
     public static Single<CommentsInfo> getCommentsInfo(final int serviceId,
