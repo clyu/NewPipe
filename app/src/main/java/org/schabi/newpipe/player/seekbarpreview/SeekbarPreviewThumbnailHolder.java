@@ -41,16 +41,47 @@ public class SeekbarPreviewThumbnailHolder {
     // and another reset starts, only the last reset is processed
     private UUID currentUpdateRequestIdentifier = UUID.randomUUID();
 
-    public void resetFrom(@NonNull final Context context, final List<Frameset> framesets) {
-        final int seekbarPreviewType = getSeekbarPreviewThumbnailType(context);
+    // The framesets of the current stream, as long as their frames have not been loaded
+    @Nullable
+    private List<Frameset> framesetsToLoad = null;
 
-        final UUID updateRequestIdentifier = UUID.randomUUID();
-        this.currentUpdateRequestIdentifier = updateRequestIdentifier;
+    /**
+     * Clears the frames of the previous stream and sets the framesets of the current one, whose
+     * frames are only loaded by {@link #loadIfNeeded(Context)}, i.e. once the user starts seeking:
+     * loading them requires downloading many images, which is useless if the user doesn't seek,
+     * e.g. because the video is played in background.
+     *
+     * @param framesets the framesets of the current stream
+     */
+    public void resetFrom(final List<Frameset> framesets) {
+        // Abort the loading of the frames of the previous stream, if it is ongoing
+        currentUpdateRequestIdentifier = UUID.randomUUID();
+        Log.d(TAG, "Clearing seekbarPreviewData");
+        synchronized (seekbarPreviewData) {
+            seekbarPreviewData.clear();
+        }
+        framesetsToLoad = framesets;
+    }
+
+    /**
+     * Loads the frames of the framesets set by {@link #resetFrom(List)}, if not already done.
+     *
+     * @param context the context used to get the preferred quality of the frames
+     */
+    public void loadIfNeeded(@NonNull final Context context) {
+        if (framesetsToLoad == null) {
+            return;
+        }
+        final List<Frameset> framesets = framesetsToLoad;
+        framesetsToLoad = null;
+
+        final int seekbarPreviewType = getSeekbarPreviewThumbnailType(context);
+        final UUID updateRequestIdentifier = currentUpdateRequestIdentifier;
 
         final ExecutorService executorService = Executors.newSingleThreadExecutor();
         executorService.submit(() -> {
             try {
-                resetFromAsync(seekbarPreviewType, framesets, updateRequestIdentifier);
+                loadAsync(seekbarPreviewType, framesets, updateRequestIdentifier);
             } catch (final Exception ex) {
                 Log.e(TAG, "Failed to execute async", ex);
             }
@@ -60,13 +91,8 @@ public class SeekbarPreviewThumbnailHolder {
         executorService.shutdown();
     }
 
-    private void resetFromAsync(final int seekbarPreviewType, final List<Frameset> framesets,
-                                final UUID updateRequestIdentifier) {
-        Log.d(TAG, "Clearing seekbarPreviewData");
-        synchronized (seekbarPreviewData) {
-            seekbarPreviewData.clear();
-        }
-
+    private void loadAsync(final int seekbarPreviewType, final List<Frameset> framesets,
+                           final UUID updateRequestIdentifier) {
         if (seekbarPreviewType == SeekbarPreviewThumbnailType.NONE) {
             Log.d(TAG, "Not processing seekbarPreviewData due to settings");
             return;

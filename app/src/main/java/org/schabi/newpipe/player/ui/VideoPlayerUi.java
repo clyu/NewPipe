@@ -582,6 +582,8 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
         binding.currentDisplaySeek.setText(getTimeString(progress));
 
         // Seekbar Preview Thumbnail
+        // (onStartTrackingTouch() is not called when seeking with keys, e.g. on Android TV)
+        seekbarPreviewThumbnailHolder.loadIfNeeded(player.getContext());
         SeekbarPreviewThumbnailHelper
                 .tryResizeAndSetSeekbarPreviewThumbnail(
                         player.getContext(),
@@ -636,6 +638,9 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
         if (player.getCurrentState() != STATE_PAUSED_SEEK) {
             player.changeState(STATE_PAUSED_SEEK);
         }
+
+        // start loading the preview thumbnails as soon as possible
+        seekbarPreviewThumbnailHolder.loadIfNeeded(player.getContext());
 
         showControls(0);
         animate(binding.currentDisplaySeek, true, DEFAULT_CONTROLS_DURATION,
@@ -1035,7 +1040,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
         binding.titleTextView.setText(info.getName());
         binding.channelTextView.setText(info.getUploaderName());
 
-        this.seekbarPreviewThumbnailHolder.resetFrom(player.getContext(), info.getPreviewFrames());
+        this.seekbarPreviewThumbnailHolder.resetFrom(info.getPreviewFrames());
     }
 
     private void updateStreamRelatedViews() {
