@@ -111,6 +111,7 @@ import org.schabi.newpipe.player.playqueue.PlayQueue;
 import org.schabi.newpipe.player.playqueue.PlayQueueItem;
 import org.schabi.newpipe.player.playqueue.SinglePlayQueue;
 import org.schabi.newpipe.player.resolver.AudioPlaybackResolver;
+import org.schabi.newpipe.player.resolver.PlaybackResolver;
 import org.schabi.newpipe.player.resolver.VideoPlaybackResolver;
 import org.schabi.newpipe.player.resolver.VideoPlaybackResolver.SourceType;
 import org.schabi.newpipe.player.ui.BackgroundPlayerUi;
@@ -2044,6 +2045,11 @@ public final class Player implements PlaybackListener, Listener {
             return audioResolver.resolve(info);
         }
 
+        if (isAudioOnly && needsAudioOnlySource(info)) {
+            // Fetch only the cheapest variant of the livestream, as its video is not played
+            return audioResolver.resolve(info);
+        }
+
         if (isAudioOnly && videoResolver.getStreamSourceType().orElse(
                 SourceType.VIDEO_WITH_AUDIO_OR_AUDIO_ONLY)
                 == SourceType.VIDEO_WITH_AUDIO_OR_AUDIO_ONLY) {
@@ -2229,6 +2235,7 @@ public final class Player implements PlaybackListener, Listener {
             return;
         }
 
+        final boolean wasAudioOnly = isAudioOnly;
         isAudioOnly = !videoAndSubtitlesEnabled;
 
         final var item = playQueue.getItem();
@@ -2249,7 +2256,9 @@ public final class Player implements PlaybackListener, Listener {
                 setRecovery();
             }
 
-            if (playQueueManagerReloadingNeeded(sourceType, info, getVideoRendererIndex())) {
+            if (playQueueManagerReloadingNeeded(sourceType, info, getVideoRendererIndex())
+                    // switch between the full and the audio-only media sources (see sourceOf())
+                    || (wasAudioOnly != isAudioOnly && needsAudioOnlySource(info))) {
                 reloadPlayQueueManager();
             }
         }, () -> {
@@ -2335,6 +2344,18 @@ public final class Player implements PlaybackListener, Listener {
 
         // Other cases: the play queue manager reload is needed
         return true;
+    }
+
+    /**
+     * @param streamInfo the {@link StreamInfo} of the stream
+     * @return whether playing only the audio of the stream requires another media source, built by
+     * the {@link AudioPlaybackResolver}, because the stream is a livestream played with HLS, whose
+     * variants usually contain both audio and video, which ExoPlayer fetches even if the video is
+     * disabled
+     */
+    private static boolean needsAudioOnlySource(@NonNull final StreamInfo streamInfo) {
+        return streamInfo.getStreamType() == StreamType.LIVE_STREAM
+                && PlaybackResolver.isHlsLivestream(streamInfo);
     }
     //endregion
 

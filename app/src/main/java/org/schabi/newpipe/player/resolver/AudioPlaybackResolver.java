@@ -48,7 +48,8 @@ public class AudioPlaybackResolver implements PlaybackResolver {
     @Override
     @Nullable
     public MediaSource resolve(@NonNull final StreamInfo info) {
-        final MediaSource liveSource = PlaybackResolver.maybeBuildLiveMediaSource(dataSource, info);
+        final MediaSource liveSource = PlaybackResolver.maybeBuildLiveMediaSource(dataSource, info,
+                true);
         if (liveSource != null) {
             return liveSource;
         }

@@ -124,6 +124,16 @@ public class PlayerDataSource {
                                 PLAYLIST_STUCK_TARGET_DURATION_COEFFICIENT));
     }
 
+    /**
+     * @return a factory of live HLS media sources which fetch only the cheapest variant, to play
+     * only the audio of livestreams whose variants contain both audio and video
+     * @see AudioOnlyHlsPlaylistParserFactory
+     */
+    public HlsMediaSource.Factory getLiveHlsAudioOnlyMediaSourceFactory() {
+        return getLiveHlsMediaSourceFactory()
+                .setPlaylistParserFactory(new AudioOnlyHlsPlaylistParserFactory());
+    }
+
     public DashMediaSource.Factory getLiveDashMediaSourceFactory() {
         return new DashMediaSource.Factory(
                 getDefaultDashChunkSourceFactory(cachelessDataSourceFactory),
