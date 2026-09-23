@@ -24,6 +24,7 @@ import org.schabi.newpipe.fragments.list.BaseListInfoFragment;
 import org.schabi.newpipe.info_list.ItemViewMode;
 import org.schabi.newpipe.info_list.dialog.InfoItemDialog;
 import org.schabi.newpipe.ktx.ViewUtils;
+import org.schabi.newpipe.util.OriginalTitleHelper;
 
 import java.io.Serializable;
 import java.util.function.Supplier;
@@ -100,7 +101,11 @@ public class RelatedItemsFragment extends BaseListInfoFragment<InfoItem, Related
 
     @Override
     protected Single<RelatedItemsInfo> loadResult(final boolean forceLoad) {
-        return Single.fromCallable(() -> relatedItemsInfo);
+        return Single.fromCallable(() -> {
+            relatedItemsInfo.setRelatedItems(OriginalTitleHelper.restoreOriginalTitles(
+                    relatedItemsInfo.getRelatedItems()));
+            return relatedItemsInfo;
+        });
     }
 
     @Override
