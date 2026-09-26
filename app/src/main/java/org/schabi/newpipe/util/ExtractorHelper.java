@@ -195,16 +195,26 @@ public final class ExtractorHelper {
                                                        final boolean forceLoad) {
         checkServiceId(serviceId);
         return checkCache(forceLoad, serviceId, url, InfoCache.Type.PLAYLIST,
-                Single.fromCallable(() ->
-                        PlaylistInfo.getInfo(NewPipe.getService(serviceId), url)));
+                Single.fromCallable(() -> {
+                    final PlaylistInfo info =
+                            PlaylistInfo.getInfo(NewPipe.getService(serviceId), url);
+                    info.setRelatedItems(
+                            OriginalTitleHelper.restoreOriginalTitles(info.getRelatedItems()));
+                    return info;
+                }));
     }
 
     public static Single<InfoItemsPage<StreamInfoItem>> getMorePlaylistItems(final int serviceId,
                                                                              final String url,
                                                                              final Page nextPage) {
         checkServiceId(serviceId);
-        return Single.fromCallable(() ->
-                PlaylistInfo.getMoreItems(NewPipe.getService(serviceId), url, nextPage));
+        return Single.fromCallable(() -> {
+            final InfoItemsPage<StreamInfoItem> page =
+                    PlaylistInfo.getMoreItems(NewPipe.getService(serviceId), url, nextPage);
+            return new InfoItemsPage<>(
+                    OriginalTitleHelper.restoreOriginalTitles(page.getItems()),
+                    page.getNextPage(), page.getErrors());
+        });
     }
 
     public static Single<KioskInfo> getKioskInfo(final int serviceId,
