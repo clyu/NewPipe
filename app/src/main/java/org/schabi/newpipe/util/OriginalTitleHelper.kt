@@ -74,7 +74,7 @@ object OriginalTitleHelper {
      * are replaced by copies with their original title
      */
     @JvmStatic
-    fun restoreOriginalTitles(items: List<InfoItem>): List<InfoItem> {
+    fun <T : InfoItem> restoreOriginalTitles(items: List<T>): List<T> {
         val streams = items.filterIsInstance<StreamInfoItem>()
             .filter { it.serviceId == ServiceList.YouTube.serviceId }
         if (streams.isEmpty()) {
@@ -85,7 +85,9 @@ object OriginalTitleHelper {
         return items.map { item ->
             val originalTitle = originalTitles[item.url]
             if (item is StreamInfoItem && originalTitle != null && originalTitle != item.name) {
-                copyWithName(item, originalTitle)
+                // the copy is a StreamInfoItem, just like the item it replaces
+                @Suppress("UNCHECKED_CAST")
+                copyWithName(item, originalTitle) as T
             } else {
                 item
             }
