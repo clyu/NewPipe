@@ -822,7 +822,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
 
         updatePlayPauseButton(PlayButtonAction.PLAY);
         animatePlayButtons(false, 100);
-        binding.getRoot().setKeepScreenOn(false);
+        setKeepScreenOn(false);
     }
 
     @Override
@@ -848,7 +848,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
                     }
                 });
 
-        binding.getRoot().setKeepScreenOn(true);
+        setKeepScreenOn(true);
     }
 
     @Override
@@ -856,7 +856,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
         super.onBuffering();
         binding.loadingPanel.setBackgroundColor(Color.TRANSPARENT);
         binding.loadingPanel.setVisibility(View.VISIBLE);
-        binding.getRoot().setKeepScreenOn(true);
+        setKeepScreenOn(true);
     }
 
     @Override
@@ -879,14 +879,14 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
                     });
         }
 
-        binding.getRoot().setKeepScreenOn(false);
+        setKeepScreenOn(false);
     }
 
     @Override
     public void onPausedSeek() {
         super.onPausedSeek();
         animatePlayButtons(false, 100);
-        binding.getRoot().setKeepScreenOn(true);
+        setKeepScreenOn(true);
     }
 
     @Override
@@ -899,7 +899,7 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
                     animatePlayButtons(true, DEFAULT_CONTROLS_DURATION);
                 });
 
-        binding.getRoot().setKeepScreenOn(false);
+        setKeepScreenOn(false);
 
         // When a (short) video ends the elements have to display the correct values - see #6180
         updatePlayBackElementsCurrentDuration(binding.playbackSeekBar.getMax());
@@ -932,6 +932,15 @@ public abstract class VideoPlayerUi extends PlayerUi implements SeekBar.OnSeekBa
                     duration,
                     AnimationType.SCALE_AND_ALPHA);
         }
+    }
+
+    /**
+     * Called whenever the playback state changes.
+     *
+     * @param keepScreenOn whether the new playback state requires the screen to be kept on
+     */
+    protected void setKeepScreenOn(final boolean keepScreenOn) {
+        binding.getRoot().setKeepScreenOn(keepScreenOn);
     }
     //endregion
 

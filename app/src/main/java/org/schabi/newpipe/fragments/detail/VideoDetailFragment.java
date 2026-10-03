@@ -1299,6 +1299,8 @@ public final class VideoDetailFragment
                     playerUi.removeViewFromParent();
                     binding.playerPlaceholder.addView(playerUi.getBinding().getRoot());
                     playerUi.setupVideoSurfaceIfNeeded();
+                    playerUi.setBottomSheetCollapsed(
+                            lastStableBottomSheetState == BottomSheetBehavior.STATE_COLLAPSED);
                 }
             });
         });
@@ -2516,6 +2518,10 @@ public final class VideoDetailFragment
         if (newState != BottomSheetBehavior.STATE_DRAGGING
                 && newState != BottomSheetBehavior.STATE_SETTLING) {
             lastStableBottomSheetState = newState;
+            if (isPlayerAvailable()) {
+                player.UIs().get(MainPlayerUi.class).ifPresent(ui -> ui.setBottomSheetCollapsed(
+                        newState == BottomSheetBehavior.STATE_COLLAPSED));
+            }
         }
     }
 }

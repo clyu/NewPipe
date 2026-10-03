@@ -90,6 +90,8 @@ public final class MainPlayerUi extends VideoPlayerUi implements View.OnLayoutCh
     private boolean isFullscreen = false;
     private boolean isVerticalVideo = false;
     private boolean fragmentIsVisible = false;
+    private boolean isBottomSheetCollapsed = false;
+    private boolean keepScreenOnRequested = false;
 
     private ContentObserver settingsContentObserver;
 
@@ -367,6 +369,18 @@ public final class MainPlayerUi extends VideoPlayerUi implements View.OnLayoutCh
     }
 
     /**
+     * To be called by the fragment when the bottom sheet containing the player gets collapsed,
+     * which leaves only the overlay with the thumbnail visible and not the video, or gets expanded
+     * again.
+     *
+     * @param collapsed whether the bottom sheet is collapsed
+     */
+    public void setBottomSheetCollapsed(final boolean collapsed) {
+        isBottomSheetCollapsed = collapsed;
+        setKeepScreenOn(keepScreenOnRequested);
+    }
+
+    /**
      * This will be called when a user goes to another app/activity, turns off a screen.
      * We don't want to interrupt playback and don't want to see notification so
      * next lines of code will enable audio-only playback only if needed
@@ -433,6 +447,18 @@ public final class MainPlayerUi extends VideoPlayerUi implements View.OnLayoutCh
         if (isFullscreen) {
             toggleFullscreen();
         }
+    }
+
+    @Override
+    protected void setKeepScreenOn(final boolean keepScreenOn) {
+        keepScreenOnRequested = keepScreenOn;
+
+        // The video is not visible while the bottom sheet is collapsed, so let the screen turn off
+        // to save battery (hence not on TVs), unless that would pause the playback, see
+        // onFragmentStopped()
+        final boolean canScreenTurnOff = isBottomSheetCollapsed && !DeviceUtils.isTv(context)
+                && getMinimizeOnExitAction(context) != MINIMIZE_ON_EXIT_MODE_NONE;
+        super.setKeepScreenOn(keepScreenOn && !canScreenTurnOff);
     }
     //endregion
 
