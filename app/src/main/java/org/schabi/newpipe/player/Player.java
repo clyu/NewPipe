@@ -661,7 +661,9 @@ public final class Player implements PlaybackListener, Listener {
         simpleExoPlayer.addListener(this);
         simpleExoPlayer.setPlayWhenReady(playOnReady);
         simpleExoPlayer.setSeekParameters(PlayerHelper.getSeekParameters(context));
-        simpleExoPlayer.setWakeMode(C.WAKE_MODE_NETWORK);
+        // Not WAKE_MODE_NETWORK, since it would also hold a high performance Wi-Fi lock, which
+        // keeps Wi-Fi out of power save mode for the whole playback, even while nothing is loaded
+        simpleExoPlayer.setWakeMode(C.WAKE_MODE_LOCAL);
         simpleExoPlayer.setHandleAudioBecomingNoisy(true);
 
         audioReactor = new AudioReactor(context, simpleExoPlayer);
