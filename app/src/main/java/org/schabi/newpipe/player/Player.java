@@ -80,6 +80,7 @@ import com.google.android.exoplayer2.text.CueGroup;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.MappingTrackSelector;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.video.VideoSize;
 
 import org.schabi.newpipe.MainActivity;
@@ -122,6 +123,7 @@ import org.schabi.newpipe.player.ui.PopupPlayerUi;
 import org.schabi.newpipe.player.ui.VideoPlayerUi;
 import org.schabi.newpipe.util.DependentPreferenceHelper;
 import org.schabi.newpipe.util.ExtractorHelper;
+import org.schabi.newpipe.util.InfoCache;
 import org.schabi.newpipe.util.ListHelper;
 import org.schabi.newpipe.util.NavigationHelper;
 import org.schabi.newpipe.util.SerializedCache;
@@ -235,6 +237,9 @@ public final class Player implements PlaybackListener, Listener {
     // minimized to background but will resume automatically to the original player type
     private boolean isAudioOnly = false;
     private boolean isPrepared = false;
+    // whether the streams were reloaded because of an HTTP 403 error and nothing could be played
+    // since then, i.e. reloading them again would not help
+    private boolean isRecoveringFromHttp403 = false;
 
     /*//////////////////////////////////////////////////////////////////////////
     // UIs, listeners and disposables
@@ -1090,6 +1095,9 @@ public final class Player implements PlaybackListener, Listener {
             Log.d(TAG, "ExoPlayer - onPlaybackStateChanged() called with: "
                     + "playbackState = [" + playbackState + "]");
         }
+        if (playbackState == com.google.android.exoplayer2.Player.STATE_READY) {
+            isRecoveringFromHttp403 = false;
+        }
         updatePlaybackState(getPlayWhenReady(), playbackState);
     }
 
@@ -1542,6 +1550,12 @@ public final class Player implements PlaybackListener, Listener {
      * window. Then we seek to the latest timestamp and restart the playback.
      * This error is <b>catchable</b>.
      * </li>
+     * <li>{@link PlaybackException#ERROR_CODE_IO_BAD_HTTP_STATUS BAD_HTTP_STATUS} with an HTTP
+     * 403 response: The streaming URLs are most likely not valid anymore, so we extract the
+     * stream again and restart the playback at the current position, see
+     * {@link #reloadStreamsOnHttp403(PlaybackException)}. This error is <b>catchable</b> unless
+     * reloading the streams did not help.
+     * </li>
      * <li>From {@link PlaybackException#ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE BAD_IO} to
      * {@link PlaybackException#ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED UNSUPPORTED_FORMATS}:
      * If the stream source is validated by the extractor but not recognized by the player,
@@ -1582,8 +1596,13 @@ public final class Player implements PlaybackListener, Listener {
                 // switching to the buffering state
                 onBuffering();
                 break;
-            case ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE:
             case ERROR_CODE_IO_BAD_HTTP_STATUS:
+                if (reloadStreamsOnHttp403(error)) {
+                    isCatchableException = true;
+                    break;
+                }
+                // fallthrough
+            case ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE:
             case ERROR_CODE_IO_FILE_NOT_FOUND:
             case ERROR_CODE_IO_NO_PERMISSION:
             case ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED:
@@ -1619,6 +1638,36 @@ public final class Player implements PlaybackListener, Listener {
         if (fragmentListener != null) {
             fragmentListener.onPlayerError(error, isCatchableException);
         }
+    }
+
+    /**
+     * Streaming URLs are rejected with an HTTP 403 response once they expire or once the IP
+     * address of the device changes (e.g. when switching between Wi-Fi and mobile data), which
+     * is fixed by extracting the stream again. This is done only once until something can be
+     * played again, since new streaming URLs do not help if they get rejected for another reason
+     * (e.g. an IP ban).
+     *
+     * @param error the error produced by the player
+     * @return whether the error was an HTTP 403 response and the streams are being reloaded
+     */
+    private boolean reloadStreamsOnHttp403(@NonNull final PlaybackException error) {
+        if (!(error.getCause() instanceof HttpDataSource.InvalidResponseCodeException cause)
+                || cause.responseCode != 403
+                || isRecoveringFromHttp403 || exoPlayerIsNull() || playQueue == null) {
+            return false;
+        }
+        isRecoveringFromHttp403 = true;
+
+        // The streaming URLs of the other items were most likely obtained under the same
+        // conditions as the rejected ones, so do not reuse any of them
+        for (final PlayQueueItem item : playQueue.getStreams()) {
+            InfoCache.getInstance()
+                    .removeInfo(item.getServiceId(), item.getUrl(), InfoCache.Type.STREAM);
+        }
+
+        setRecovery();
+        reloadPlayQueueManager();
+        return true;
     }
 
     private void createErrorNotification(@NonNull final PlaybackException error) {
