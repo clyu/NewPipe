@@ -30,7 +30,69 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
 
 jobs:
+  # The workflows inherited from upstream keep getting re-enabled, and CI is the only one wanted
+  # here. So every CI run starts by disabling all other workflows and cancelling their runs that
+  # have not finished yet, instead of someone doing that by hand again and again.
+  stop-other-workflows:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      # First, so that no new runs start while the existing ones are being cancelled below.
+      - name: Disable every workflow but CI
+        run: |
+          set -euo pipefail
+          # Without --all only the enabled workflows are listed, so the ones that are already
+          # disabled are left alone. The name is the `name:` at the top of the workflow file.
+          # Tab separated, because workflow names contain spaces.
+          workflows="$(gh workflow list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json id,name \
+            --jq '.[] | select(.name != "CI") | "\(.id)\t\(.name)"')"
+          if [ -z "$workflows" ]; then
+            echo "No other workflow is enabled."
+            exit 0
+          fi
+          while IFS=$'\t' read -r id name; do
+            # Housekeeping that must not stop CI: a pull request from a fork gets a read-only
+            # token, so disabling fails there.
+            if gh workflow disable "$id" --repo "$GITHUB_REPOSITORY"; then
+              echo "Disabled workflow $id \"$name\"."
+            else
+              echo "::warning::Could not disable workflow $id \"$name\"."
+            fi
+          done <<< "$workflows"
+
+      - name: Cancel the unfinished runs of every workflow but CI
+        run: |
+          set -euo pipefail
+          # workflowName is the `name:` at the top of the workflow file. A run that has not
+          # finished is queued, waiting, requested, pending or in progress. Tab separated,
+          # because workflow names contain spaces.
+          runs="$(gh run list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json databaseId,workflowName,status \
+            --jq '.[] | select(.status != "completed" and .workflowName != "CI")
+                  | "\(.databaseId)\t\(.workflowName)"')"
+          if [ -z "$runs" ]; then
+            echo "No unfinished runs of other workflows."
+            exit 0
+          fi
+          while IFS=$'\t' read -r id name; do
+            # Cancelling is housekeeping and must not stop CI: a pull request from a fork gets
+            # a read-only token, and a run may have finished since it was listed.
+            if gh run cancel "$id" --repo "$GITHUB_REPOSITORY"; then
+              echo "Cancelled run $id of \"$name\"."
+            else
+              echo "::warning::Could not cancel run $id of \"$name\"."
+            fi
+          done <<< "$runs"
+
   build-and-test-jvm:
+    needs: stop-other-workflows
     runs-on: ubuntu-latest
 
     permissions:
